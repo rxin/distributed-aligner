@@ -1,0 +1,27 @@
+A distributed machine translation aligner.
+
+Author: Reynold Xin
+Email: rxin [at] cs.berkeley.edu
+
+
+The IBM Model 1 aligner [1] is implemented first in Java for single-node
+computation. I then ported the Java aligner to Scala, and eventually
+integrated it with Spark [2] for fully distributed computation.
+
+The IBM Model 1 algorithm uses iterative EM to compute the alignment
+matrix. This can easily be parallelized using a MapReduce computation model.
+A naive MapReduce implementation, however, requires a large bisection bandwidth
+and large amount of memory on each computation node [3].
+
+This implementation leverages Spark's unique infrastructure to minimize the
+bandwidth and memory requirements. Spark is a distributed computing framework
+developed in the AMPLab at UC Berkeley. Its infrastructure provides language
+integration with Scala and provides the MapReduce computation model to the
+user.
+
+
+[1] IBM Model 1: http://acl.ldc.upenn.edu/J/J03/J03-1002.pdf
+[2] Spark: http://www.cs.berkeley.edu/~matei/spark/
+[3] Fully Distributed EM for Very Large Datasets: 
+    http://www.cs.berkeley.edu/~jawolfe/pubs/08-icml-em.pdf
+
