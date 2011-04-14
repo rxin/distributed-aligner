@@ -16,11 +16,13 @@ object DataPreprocessor extends Application {
 
     val converter = new Converter
 
-    args.foreach( file => {
+    args.drop(1).foreach( file => {
         println("Converting " + file)
         converter.convert(file)
         println("# of vocab: " + converter.index.size)
     })
+
+    converter.writeDictionary(args(0))
   }
 }
 
@@ -28,6 +30,17 @@ object DataPreprocessor extends Application {
 class Converter {
   
   val index = new HashMap[String, Int]
+
+  def writeDictionary(outputFile: String) {
+    println("Writing dict output to " + outputFile)
+    val out = new FileWriter(outputFile)
+
+    index.foreach( kv => {
+      out.write(kv._1 + " " + kv._2 + "\n")
+    })
+
+    out.close()
+  }
 
   def convert(file: String) {
     val s = Source.fromFile(file)
