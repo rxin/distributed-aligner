@@ -13,9 +13,7 @@ import scala.collection.JavaConversions._
 import java.io.File
 import java.lang.{Iterable => JavaIterable}
 
-import edu.berkeley.nlp.assignments.assign3.AlignmentTester
-import edu.berkeley.nlp.mt.{Alignment, SentencePair, WordAligner, WordAlignerFactory}
-import edu.berkeley.nlp.util.CollectionUtils
+import edu.berkeley.nlp.mt.{Alignment, SentencePair}
 import edu.berkeley.nlp.util.CounterMap
 
 
@@ -27,7 +25,6 @@ import edu.berkeley.nlp.util.CounterMap
 object AlignerSingleThread extends Application {
 
   override def main(args: Array[String]) {
-    //AlignmentTester.main(args)
     run(args(0).toInt)
   }
 
@@ -43,10 +40,11 @@ object AlignerSingleThread extends Application {
       path + "/test_aligns_big/test.wa")
 
     val concatSentencePairs: JavaIterable[SentencePair] = trainingSentencePairs
-    //  CollectionUtils.concat(trainingSentencePairs, testSentencePairs)
 
     // Init aligner.
-    val wordAligner = (new Model1AlignerFactory).newAligner(concatSentencePairs)
+    val wordAligner = new Model1SoftEmWeirdAligner1()
+    wordAligner.init(trainingSentencePairs)
+    wordAligner.train(trainingSentencePairs)
 
     // Test alignment.
     var proposedSureCount = 0;
@@ -89,28 +87,12 @@ object AlignerSingleThread extends Application {
 
 
 /**
- * Aligner factory.
- *
- * @author rxin
- */
-class Model1AlignerFactory extends WordAlignerFactory {
-
-  def newAligner(trainingData: JavaIterable[SentencePair]) : WordAligner = {
-    val aligner = new Model1SoftEmWeirdAligner1()
-    aligner.train(trainingData)
-    return aligner
-  }
-
-}
-
-
-/**
  * IBM Model 1 Aligner using soft EM.
  * The caller must call train() to train the model before using it.
  *
  * @author rxin
  */
-class Model1SoftEmWeirdAligner1 extends WordAligner {
+class Model1SoftEmWeirdAligner1 {
 
   val NUM_EM_ITERATIONS = 20
 
@@ -152,8 +134,6 @@ class Model1SoftEmWeirdAligner1 extends WordAligner {
    * Train the aligner. This must be called before using alignSentencePair().
    */
   def train(trainingData: JavaIterable[SentencePair]) {
-    init(trainingData)
-
     // EM iterations.
     for (emIteration <- 1 to NUM_EM_ITERATIONS) {
       println("EM iteration # " + emIteration + " / " + NUM_EM_ITERATIONS)
@@ -196,9 +176,6 @@ class Model1SoftEmWeirdAligner1 extends WordAligner {
     }
   }
 
-  /* (non-Javadoc)
-   * @see edu.berkeley.nlp.mt.WordAligner#alignSentencePair(edu.berkeley.nlp.mt.SentencePair)
-   */
   def alignSentencePair(sentencePair: SentencePair): Alignment = {
     val alignment = new Alignment
 
