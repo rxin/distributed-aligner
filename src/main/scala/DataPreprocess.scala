@@ -28,7 +28,10 @@ object DataPreprocessor extends Application {
 
 
 class Converter {
-  
+ 
+  /**
+   * The word index starts with 1. 0 is reserved for NULL alignment.
+   */
   val index = new HashMap[String, Int]
 
   def writeDictionary(outputFile: String) {
@@ -48,16 +51,35 @@ class Converter {
     val out = new FileWriter(file + ".out")
 
     val newFileData = s.getLines.foreach( line => {
+
+      var startIndex = 0
+      var endIndex = line.length
+      val z: Seq[Char] = line
+
+      z match {
+        case Seq('<', 's', rest @ _*) =>
+          startIndex = "<s snum=0001> ".length
+          endIndex = line.length - 5
+        case Seq(_*) =>
+          startIndex = 0
+      }
+
+      out.write(line.substring(0, startIndex))
+
       out.write(
-        line.split(" ").map( word => {
+        line.substring(startIndex, endIndex).split(" ").map( word => {
           if (index.contains(word)) {
             index(word)
           } else {
             index += word -> (index.size + 1)
             index(word)
           }
-        }).mkString(" ") + "\n"
+        }).mkString(" ") + " "
       )
+
+      out.write(line.substring(endIndex, line.length))
+      out.write("\n")
+
     })
 
     out.close()
