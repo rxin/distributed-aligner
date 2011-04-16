@@ -14,7 +14,6 @@ import java.io.File
 import java.lang.{Iterable => JavaIterable}
 
 import edu.berkeley.nlp.mt.{Alignment, SentencePair}
-import edu.berkeley.nlp.util.CounterMap
 
 
 /**
@@ -100,7 +99,7 @@ class Model1SoftEmWeirdAligner1 {
 
   val NON_NULL_LIKELIHOOD = (1 - NULL_LIKELIHOOD)
 
-  var alignProb = new CounterMap[Int, Int]
+  var alignProb = new CounterMap
 
   /**
    * Generate the initial word pair counts (translation probability). This
@@ -138,7 +137,7 @@ class Model1SoftEmWeirdAligner1 {
     for (emIteration <- 1 to NUM_EM_ITERATIONS) {
       println("EM iteration # " + emIteration + " / " + NUM_EM_ITERATIONS)
 
-      val newAlignProb = new CounterMap[Int, Int]
+      val newAlignProb = new CounterMap
 
       // E step: align words using alignProb.
       trainingData.foreach { sentencePair => {
