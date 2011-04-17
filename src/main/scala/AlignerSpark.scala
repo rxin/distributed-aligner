@@ -1,6 +1,6 @@
 /*****************************************************************************
- * A machine translation IBM Model 1 aligner in Scala. This one runs on single
- * node, single threaded.
+ * A machine translation IBM Model 1 aligner in Scala. The first version that
+ * runs on Spark using a naive MapReduce model.
  *
  * Author: Reynold Xin
  * Email: rxin@cs.berkeley.edu
@@ -14,6 +14,7 @@ import java.io.File
 import java.lang.{Iterable => JavaIterable}
 
 import edu.berkeley.nlp.mt.{Alignment, SentencePair}
+import spark.{Broadcast, RDD, SparkContext}
 
 
 /**
@@ -21,13 +22,18 @@ import edu.berkeley.nlp.mt.{Alignment, SentencePair}
  *
  * @author rxin
  */
-object AlignerSingleThreadDriver extends Application {
+object AlignerSpark extends Application {
 
   override def main(args: Array[String]) {
-    run(args(0).toInt)
+    // args(0) = spark master
+    // args(1) = num of training sentence pairs
+    // args(2) = data path
+    run(args(0), args(1).toInt, args(2))
   }
 
-  def run(maxTrain: Int, printAlign: Boolean = true, path:String = "./data/") {
+  def run(master: String, maxTrain: Int, path:String = "./data/",
+    printAlign: Boolean = true) {
+
     val trainingSentencePairs: JavaIterable[SentencePair] =
       SentencePair.readSentencePairs(
         new File(path, "training").getPath(), maxTrain)
@@ -41,9 +47,13 @@ object AlignerSingleThreadDriver extends Application {
     val concatSentencePairs: JavaIterable[SentencePair] = trainingSentencePairs
 
     // Init aligner.
-    val wordAligner = new AlignerSingleThread()
+    val sc = new SparkContext(master, "aligner")
+    val wordAligner = new Model1AlignerSpark(sc)
     wordAligner.init(trainingSentencePairs)
-    wordAligner.train(trainingSentencePairs)
+
+    // Run the distributed aligner.
+    val trainingSentencePairsRdd = sc.parallelize(trainingSentencePairs.toSeq)
+    wordAligner.train(trainingSentencePairsRdd)
 
     // Test alignment.
     var proposedSureCount = 0;
@@ -87,11 +97,11 @@ object AlignerSingleThreadDriver extends Application {
 
 /**
  * IBM Model 1 Aligner using soft EM.
- * The caller must call train() to train the model before using it.
  *
  * @author rxin
  */
-class AlignerSingleThread {
+@serializable
+class Model1AlignerSpark(val sc: SparkContext) {
 
   val NUM_EM_ITERATIONS = 20
 
@@ -132,15 +142,17 @@ class AlignerSingleThread {
   /**
    * Train the aligner. This must be called before using alignSentencePair().
    */
-  def train(trainingData: JavaIterable[SentencePair]) {
+  def train(trainingData: RDD[SentencePair]) {
     // EM iterations.
     for (emIteration <- 1 to NUM_EM_ITERATIONS) {
       println("EM iteration # " + emIteration + " / " + NUM_EM_ITERATIONS)
 
-      val newAlignProb = new CounterMap
+      val alignProbBroadcast = sc.broadcast[CounterMap](alignProb)
 
       // E step: align words using alignProb.
-      trainingData.foreach { sentencePair => {
+      val counterMaps = trainingData.map { sentencePair => {
+
+        val counterMap = new CounterMap
 
         // Append 0 for NULL alignment.
         sentencePair.englishWords.append("0")
@@ -149,29 +161,29 @@ class AlignerSingleThread {
 
           // The likelihood that this French word (f) should be aligned to
           // each of the English words.
-          // TODO this can be optimized to avoid constant allocation of
-          // the alignDist array.
-          val alignDist = sentencePair.englishWords.map { e =>
+          val alignDist: Seq[Double] = sentencePair.englishWords.map { e =>
             if (e.toInt == 0) {
-              (alignProb.getCount(e.toInt, f.toInt) * NULL_LIKELIHOOD)
+              (alignProbBroadcast.value.getCount(e.toInt, f.toInt)
+                * NULL_LIKELIHOOD)
             } else {
-              (alignProb.getCount(e.toInt, f.toInt) * NON_NULL_LIKELIHOOD
-                  / (sentencePair.englishWords.size + 1))
+              (alignProbBroadcast.value.getCount(e.toInt, f.toInt)
+                * NON_NULL_LIKELIHOOD / (sentencePair.englishWords.size + 1))
             }
           }
 
           val alignDistSum = alignDist.sum
 
-          // Increment the normalized alignment count.
           (sentencePair.englishWords zip alignDist).foreach { case(e, p) =>
-            newAlignProb.incrementCount(e.toInt, f.toInt, p / alignDistSum)
+            counterMap.incrementCount(e.toInt, f.toInt, p / alignDistSum)
           }
         }}
+
+        counterMap
       }}
 
-      // M step: update alignProb based on the alignment.
-      newAlignProb.normalize()
-      alignProb = newAlignProb
+      // M step: update alignProb.
+      alignProb = counterMaps.reduce(CounterMap.merge)
+      alignProb.normalize()
     }
   }
 

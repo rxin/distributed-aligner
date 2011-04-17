@@ -37,6 +37,17 @@ class CounterMap extends HashMap[Int, Counter] {
     foreach { case(k, v) => v.normalize() }
   }
 
+  /**
+   * Merge the current CounterMap with another CounterMap, and return the
+   * result. The merge is in place, i.e. affects the current CounterMap.
+   */
+  def mergeWith(anotherCounterMap: CounterMap): CounterMap = {
+    anotherCounterMap.foreach { case(k, anotherCounter) => {
+      ensureCounter(k).mergeWith(anotherCounter)
+    }}
+    this
+  }
+
   def ensureCounter(key: Int): Counter = {
     get(key) match {
       case Some(counter) => counter
@@ -48,6 +59,13 @@ class CounterMap extends HashMap[Int, Counter] {
     }
   }
 
+}
+
+
+object CounterMap {
+  def merge(first: CounterMap, second: CounterMap): CounterMap = {
+    first.mergeWith(second)
+  }
 }
 
 
@@ -82,6 +100,17 @@ class Counter extends HashMap[Int, Double] {
     foreach { case(k, v) =>
       setCount(k, v / normSum)
     }
+  }
+
+  /**
+   * Merge the current Counter with another Counter, and return the result.
+   * The merge is in place, i.e. affects the current Counter.
+   */
+  def mergeWith(anotherCounter: Counter): Counter = {
+    anotherCounter.foreach { case(k, v) => {
+      incrementCount(k, v)
+    }}
+    this
   }
 }
 

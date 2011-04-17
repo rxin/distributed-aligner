@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.FileFilter;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,7 +20,7 @@ import edu.berkeley.nlp.util.Pair;
  * test sets have integer IDs, as well, which are used to retreive the gold
  * standard alignments for those sentences.
  */
-public class SentencePair
+public class SentencePair implements Serializable
 {
 
 	public static final String ENGLISH_EXTENSION = "en";
