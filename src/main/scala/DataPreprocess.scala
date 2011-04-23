@@ -1,4 +1,4 @@
-package edu.berkeley.nlp.assignments.assign3.student
+package edu.berkeley.cs.amplab.aligner
 
 import scala.io._
 import scala.collection.mutable.HashMap

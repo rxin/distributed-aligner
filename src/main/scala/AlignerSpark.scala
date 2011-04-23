@@ -14,7 +14,7 @@ import java.io.File
 import java.lang.{Iterable => JavaIterable}
 
 import edu.berkeley.nlp.mt.{Alignment, SentencePair}
-import spark.{Broadcast, RDD, SparkContext}
+import spark.{RDD, SparkContext}
 
 
 /**
@@ -26,33 +26,33 @@ object AlignerSpark extends Application {
 
   override def main(args: Array[String]) {
     // args(0) = spark master
-    // args(1) = num of training sentence pairs
-    // args(2) = data path
-    run(args(0), args(1).toInt, args(2))
+    // args(1) = num of training sentence pairs per node
+    // args(2) = test data path
+    // args(3) = training data path (HDFS)
+    run(args(0), args(1).toInt, args(2), args(3))
   }
 
-  def run(master: String, maxTrain: Int, path:String = "./data/",
-    printAlign: Boolean = true) {
-
-    val trainingSentencePairs: JavaIterable[SentencePair] =
-      SentencePair.readSentencePairs(
-        new File(path, "training").getPath(), maxTrain)
+  def run(master: String, maxTrain: Int, testDataPath:String,
+    trainingDataPath:String, printAlign: Boolean = false) {
 
     val testSentencePairs: JavaIterable[SentencePair] =
-      SentencePair.readSentencePairs(path + "/test_aligns_big",
+      SentencePair.readSentencePairs(testDataPath + "/test_aligns_big",
                                      Integer.MAX_VALUE)
     val testAlignments = Alignment.readAlignments(
-      path + "/test_aligns_big/test.wa")
+      testDataPath+ "/test_aligns_big/test.wa")
 
-    val concatSentencePairs: JavaIterable[SentencePair] = trainingSentencePairs
-
-    // Init aligner.
+    // Init aligner and load training data from HDFS.
     val sc = new SparkContext(master, "aligner")
+    val trainingLines = sc.textFile(trainingDataPath).splitRdd.flatMap {
+      _.take(maxTrain)
+    }
+    val trainingSentencePairsRdd = trainingLines.map {
+      SimpleSentencePair.lineToSimpleSentencePair(_)
+    }.cache()
     val wordAligner = new Model1AlignerSpark(sc)
-    wordAligner.init(trainingSentencePairs)
 
     // Run the distributed aligner.
-    val trainingSentencePairsRdd = sc.parallelize(trainingSentencePairs.toSeq)
+    wordAligner.init(trainingSentencePairsRdd)
     wordAligner.train(trainingSentencePairsRdd)
 
     // Test alignment.
@@ -121,28 +121,29 @@ class Model1AlignerSpark(val sc: SparkContext) {
    * first word in the sentence, which happen to be "the", and converge at
    * that local optimum (for non-convex) or make convergence slower (for
    * convex).
-   */  
-  def init(trainingData: JavaIterable[SentencePair]) {
+   */
+  def init(trainingData: RDD[SimpleSentencePair]) {
 
-    trainingData.zipWithIndex.foreach { case(sentencePair, sentenceIndex) => {
-      // Run the init alignment.
-      // Append 0 for NULL alignment.
-      sentencePair.englishWords.append("0")
-      sentencePair.englishWords.foreach( e => {
-        sentencePair.frenchWords.foreach( f => {
-          // TODO toInt is slow.
-          alignProb.incrementCount(e.toInt, f.toInt, 1)
-        })
-      })
+    val counterMaps = trainingData.map { sentencePair => {
+      val counterMap = new CounterMap
+      sentencePair.englishWords += 0
+      sentencePair.englishWords.foreach { e => {
+        sentencePair.frenchWords.foreach { f => {
+          counterMap.incrementCount(e, f, 1)
+        }}
+      }}
+
+      counterMap
     }}
 
+    alignProb = counterMaps.reduce(CounterMap.merge)
     alignProb.normalize()
   }
 
   /**
    * Train the aligner. This must be called before using alignSentencePair().
    */
-  def train(trainingData: RDD[SentencePair]) {
+  def train(trainingData: RDD[SimpleSentencePair]) {
     // EM iterations.
     for (emIteration <- 1 to NUM_EM_ITERATIONS) {
       println("EM iteration # " + emIteration + " / " + NUM_EM_ITERATIONS)
@@ -155,18 +156,18 @@ class Model1AlignerSpark(val sc: SparkContext) {
         val counterMap = new CounterMap
 
         // Append 0 for NULL alignment.
-        sentencePair.englishWords.append("0")
+        sentencePair.englishWords += 0
         
         sentencePair.frenchWords.foreach { f => {
 
           // The likelihood that this French word (f) should be aligned to
           // each of the English words.
           val alignDist: Seq[Double] = sentencePair.englishWords.map { e =>
-            if (e.toInt == 0) {
-              (alignProbBroadcast.value.getCount(e.toInt, f.toInt)
+            if (e == 0) {
+              (alignProbBroadcast.value.getCount(e, f)
                 * NULL_LIKELIHOOD)
             } else {
-              (alignProbBroadcast.value.getCount(e.toInt, f.toInt)
+              (alignProbBroadcast.value.getCount(e, f)
                 * NON_NULL_LIKELIHOOD / (sentencePair.englishWords.size + 1))
             }
           }
@@ -174,7 +175,7 @@ class Model1AlignerSpark(val sc: SparkContext) {
           val alignDistSum = alignDist.sum
 
           (sentencePair.englishWords zip alignDist).foreach { case(e, p) =>
-            counterMap.incrementCount(e.toInt, f.toInt, p / alignDistSum)
+            counterMap.incrementCount(e, f, p / alignDistSum)
           }
         }}
 

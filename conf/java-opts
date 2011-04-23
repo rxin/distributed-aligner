@@ -1,0 +1,17 @@
+-Dspark.dfs=hdfs://10.120.61.220:9000
+-Dspark.dfs.workdir=/mnt/tmp
+-Dspark.broadcast.factory=spark.ChainedBroadcastFactory
+-Dspark.broadcast.masterHostAddress=10.120.61.220
+-Dspark.broadcast.blockSize=4096
+-Dspark.broadcast.maxChatTime=1000
+-Dspark.broadcast.endGameFraction=0.95
+-Dspark.broadcast.maxRxPeers=4
+-Dspark.broadcast.trackerSocketTimeout=3600000
+-Dspark.broadcast.serverSocketTimeout=3600000
+-Dspark.shuffle.class=spark.LocalFileShuffle
+-Dspark.shuffle.masterHostAddress=10.120.61.220
+-Dspark.shuffle.masterTrackerPort=22222
+-Dspark.shuffle.maxRxConnections=20
+-Dspark.shuffle.maxTxConnections=40
+-Dspark.shuffle.minKnockInterval=200
+-Dspark.shuffle.maxKnockInterval=2000
