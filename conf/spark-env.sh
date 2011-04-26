@@ -27,5 +27,5 @@ export SPARK_CLASSPATH=$JARS
 #export SPARK_JAVA_OPTS="-Dspark.default.parallelism=40 -Dspark.cache.class=spark.SerializingCache -Dspark.boundedMemoryCache.memoryFraction=0.50 -XX:+DoEscapeAnalysis -Dspark.task.cpus=1 -XX:+UseCompressedOops"
 #export SPARK_JAVA_OPTS="-Dspark.default.parallelism=40 -XX:+DoEscapeAnalysis -Dspark.task.cpus=2 -XX:+UseCompressedOops"
 #export SPARK_JAVA_OPTS="-Dspark.default.parallelism=40 -XX:+DoEscapeAnalysis -Dspark.task.cpus=1 -XX:+UseCompressedOops -Dspark.serialization=spark.KryoSerialization -Dspark.cache.class=spark.SerializingCache -Dspark.boundedMemoryCache.memoryFraction=0.8 -Dspark.locality.wait=10000 -Dspark.kryo.registrator=SparseVectorOriginalRegistrator"
-export SPARK_JAVA_OPTS="-Dspark.default.parallelism=40 -XX:+DoEscapeAnalysis -Dspark.task.cpus=1 -XX:+UseCompressedOops -Dspark.boundedMemoryCache.memoryFraction=0.8 -Dspark.locality.wait=10000"
+export SPARK_JAVA_OPTS="-Dspark.default.parallelism=4 -XX:+DoEscapeAnalysis -Dspark.task.cpus=1 -XX:+UseCompressedOops -Dspark.boundedMemoryCache.memoryFraction=0.8 -Dspark.locality.wait=10000"
 #export SPARK_JAVA_OPTS="-Dspark.default.parallelism=40 -XX:+DoEscapeAnalysis -Dspark.task.cpus=2 -XX:+UseCompressedOops -Dspark.serialization=spark.KryoSerialization -Dspark.locality.wait=10000"
