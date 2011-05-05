@@ -63,6 +63,7 @@ class CounterMap extends HashMap[Int, Counter] {
 
 
 object CounterMap {
+  def apply(p: (Int, Counter)) = { val cm = new CounterMap ; cm.put(p._1, p._2) ; cm }
   def merge(first: CounterMap, second: CounterMap): CounterMap = {
     first.mergeWith(second)
   }
