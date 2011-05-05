@@ -69,12 +69,12 @@ extends RDD[(L, R)](left.sparkContext) {
     })
   }
   override def splits = splits_.asInstanceOf[Array[Split]]
-  override def preferredLocations(split: Split) = left.preferredLocations(split)
+  override def preferredLocations(split: Split) = left.preferredLocations(split.asInstanceOf[ZipSplit].left)
   override def iterator(splitIn: Split) = {
     val split = splitIn.asInstanceOf[ZipSplit]
     left.iterator(split.left).map(_._2).zip(right.iterator(split.right).map(_._2))
   }
-  override def taskStarted(split: Split, slot: SlaveOffer) = left.taskStarted(split, slot)
+  override def taskStarted(split: Split, slot: SlaveOffer) = left.taskStarted(split.asInstanceOf[ZipSplit].left, slot)
 }
 
 /**
@@ -112,8 +112,9 @@ object AlignerX extends Application {
     val wordAligner = new Model1AlignerX(sc)
 
     // Run the distributed aligner.
-    val model = wordAligner.init(trainingSentencePairsRdd)
-    wordAligner.train(trainingSentencePairsRdd, model)
+    var model = wordAligner.init(trainingSentencePairsRdd)
+    model = wordAligner.train(trainingSentencePairsRdd, model)
+    var finalModel:CounterMap = model.map(_._1).reduce(CounterMap.merge)
 
     // Test alignment.
     var proposedSureCount = 0;
@@ -121,35 +122,35 @@ object AlignerX extends Application {
     var sureCount = 0;
     var proposedCount = 0;
 
-    //// Align the sentences.
-    //testSentencePairs.foreach { sentencePair =>
-    //  val proposedAlignment: Alignment = wordAligner.alignSentencePair(
-    //    sentencePair);
-    //  val referenceAlignment: Alignment = testAlignments.get(
-    //    sentencePair.getSentenceID());
-    //  
-    //  println("Alignment:\n" +
-    //    Alignment.render(referenceAlignment, proposedAlignment, sentencePair))
+    // Align the sentences.
+    testSentencePairs.foreach { sentencePair =>
+      val proposedAlignment: Alignment = wordAligner.alignSentencePair(
+        sentencePair, finalModel);
+      val referenceAlignment: Alignment = testAlignments.get(
+        sentencePair.getSentenceID());
+      
+      println("Alignment:\n" +
+        Alignment.render(referenceAlignment, proposedAlignment, sentencePair))
 
-    //  sentencePair.getFrenchWords.zipWithIndex.foreach { case(fw, fi) =>
-    //    sentencePair.getEnglishWords.zipWithIndex.foreach { case(ew, ei) =>
-    //      val proposed = proposedAlignment.containsSureAlignment(ei, fi)
-    //      val sure = referenceAlignment.containsSureAlignment(ei, fi)
-    //      val possible = referenceAlignment.containsPossibleAlignment(ei, fi)
-    //      if (proposed && sure) proposedSureCount += 1
-    //      if (proposed && possible) proposedPossibleCount += 1
-    //      if (proposed) proposedCount += 1
-    //      if (sure) sureCount += 1
-    //    }
-    //  }
-    //}
+      sentencePair.getFrenchWords.zipWithIndex.foreach { case(fw, fi) =>
+        sentencePair.getEnglishWords.zipWithIndex.foreach { case(ew, ei) =>
+          val proposed = proposedAlignment.containsSureAlignment(ei, fi)
+          val sure = referenceAlignment.containsSureAlignment(ei, fi)
+          val possible = referenceAlignment.containsPossibleAlignment(ei, fi)
+          if (proposed && sure) proposedSureCount += 1
+          if (proposed && possible) proposedPossibleCount += 1
+          if (proposed) proposedCount += 1
+          if (sure) sureCount += 1
+        }
+      }
+    }
 
-    //// Print precision, recall, and AER.
-    //println("Precision: " +
-    //  proposedPossibleCount / proposedCount.asInstanceOf[Double])
-    //println("Recall: " + proposedSureCount / sureCount.asInstanceOf[Double])
-    //println("AER: " +  (1.0 - (proposedSureCount + proposedPossibleCount)
-    //  / (sureCount + proposedCount).asInstanceOf[Double]))
+    // Print precision, recall, and AER.
+    println("Precision: " +
+      proposedPossibleCount / proposedCount.asInstanceOf[Double])
+    println("Recall: " + proposedSureCount / sureCount.asInstanceOf[Double])
+    println("AER: " +  (1.0 - (proposedSureCount + proposedPossibleCount)
+      / (sureCount + proposedCount).asInstanceOf[Double]))
 
   }
 }
@@ -219,7 +220,7 @@ class Model1AlignerX(val sc: SparkContext) {
   /**
    * Train the aligner. This must be called before using alignSentencePair().
    */
-  def train(trainingData: RDD[SimpleSentencePair], alignProbIn: RDD[(CounterMap, HashSet[Int])]) {
+  def train(trainingData: RDD[SimpleSentencePair], alignProbIn: RDD[(CounterMap, HashSet[Int])]): RDD[(CounterMap, HashSet[Int])] = {
     // EM iterations.
     var alignProb = alignProbIn
 
@@ -286,9 +287,47 @@ class Model1AlignerX(val sc: SparkContext) {
         (cm, seeds)
       })
     }
+
+    alignProb
   }
 
-  //def alignSentencePair(sentencePair: SentencePair): Alignment = {
+  def alignSentencePair(
+    sentencePair: SentencePair,
+    alignProb: CounterMap
+  ): Alignment = {
+    val alignment = new Alignment
+
+    // For each French word, find the most likely alignment.
+    sentencePair.frenchWords.zipWithIndex.foreach { case(f, fi) => {
+      
+      // First align the word to null (0).
+      var bestProb = alignProb.getCount(0, f.toInt) * NULL_LIKELIHOOD
+      var alignToEi = -1
+
+      // Find the alignment of highest likehihood.
+      sentencePair.englishWords.zipWithIndex.foreach { case(e, ei) => {
+        val prob = (alignProb.getCount(e.toInt, f.toInt) * NON_NULL_LIKELIHOOD
+            / (sentencePair.englishWords.size + 1))
+
+        if (prob > bestProb) {
+          bestProb = prob
+          alignToEi = ei
+        }
+      }}
+
+      // Specify the alignment.
+      if (alignToEi != -1) {
+        alignment.addAlignment(alignToEi, fi, true)
+      }
+    }}
+
+    return alignment
+  }
+
+  //def alignSentencePair(
+  //  sentencePair: SentencePair,
+  //  model: RDD[(CounterMap, HashSet[Int])]
+  //): Alignment = {
   //  val alignment = new Alignment
 
   //  // For each French word, find the most likely alignment.
